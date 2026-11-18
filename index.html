@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32-H2-MINI-1 Downloader</title>
+  <style>
+    :root {
+      --primary: #1F497D;
+      --accent: #00D9FF;
+      --bg-dark: #0F1822;
+      --bg-card: #FFFFFF;
+      --text: #333;
+      --border: #E5E7EB;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Malgun Gothic', sans-serif;
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #F5F7FA;
+      color: var(--text);
+    }
+    h1 { color: var(--primary); border-bottom: 3px solid var(--accent); padding-bottom: 10px; margin-bottom: 6px; }
+    h2 { color: #666; font-size: 16px; margin-top: 4px; font-weight: normal; }
+    .card { background: var(--bg-card); padding: 24px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin: 20px 0; }
+    .step { margin: 12px 0; padding-left: 24px; position: relative; }
+    .step::before { content: attr(data-num); position: absolute; left: 0; top: 0; width: 20px; height: 20px; background: var(--accent); color: white; border-radius: 50%; text-align: center; font-size: 12px; line-height: 20px; font-weight: bold; }
+    label { display: block; margin: 12px 0 4px; font-weight: 600; }
+    input[type="file"], input[type="text"] { width: 100%; padding: 10px; border: 2px solid var(--border); border-radius: 6px; font-size: 14px; font-family: inherit; }
+    input[type="text"] { font-family: 'Consolas', monospace; }
+    button { cursor: pointer; padding: 14px 28px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; margin: 8px 4px; transition: transform 0.1s; }
+    button:hover { transform: translateY(-1px); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-secondary { background: #6B7280; color: white; }
+    .btn-danger { background: #F43F5E; color: white; }
+    .status { padding: 12px; border-radius: 6px; margin: 12px 0; font-family: 'Consolas', monospace; font-size: 13px; white-space: pre-wrap; word-break: break-all; }
+    .status.info { background: #DBEAFE; border-left: 4px solid #3B82F6; }
+    .status.success { background: #D1FAE5; border-left: 4px solid #10B981; }
+    .status.error { background: #FEE2E2; border-left: 4px solid #EF4444; }
+    .status.warn { background: #FEF3C7; border-left: 4px solid #F59E0B; }
+    progress { width: 100%; height: 20px; margin: 8px 0; }
+    #log { background: #1E1E1E; color: #D4D4D4; padding: 12px; border-radius: 6px; height: 200px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 12px; white-space: pre-wrap; }
+    .row { display: flex; gap: 12px; align-items: center; }
+    .row > * { flex: 1; }
+    .hidden { display: none !important; }
+    code { background: #F3F4F6; padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', monospace; }
+  </style>
+</head>
+<body>
+  <h1>ESP32-H2-MINI-1 Downloader</h1>
+  <h2 style="color:#666;font-size:15px;margin:2px 0 14px;font-weight:normal">ESP32-H2-MINI-1 · RISC-V · BLE 5 / 802.15.4 · esptool-js Web Flasher</h2>
+
+  <div class="card">
+    <h3 style="margin-top:0">사용 절차</h3>
+    <div class="step" data-num="1">보드를 <b>USB-UART 어댑터(데이터 케이블)</b> 로 PC 에 연결</div>
+    <div class="step" data-num="2">전달받은 <code>*.bin</code> 파일 선택</div>
+    <div class="step" data-num="3"><b>Select COM Port</b> 클릭 → 브라우저 팝업에서 포트 선택</div>
+    <div class="step" data-num="4"><b>Flash</b> 버튼 클릭 → 자동 업데이트 진행</div>
+    <div style="font-size:12px;color:#92400E;background:#FEF3C7;padding:8px;border-radius:6px;margin-top:10px">
+      자동 리셋이 없는 어댑터(CH9102 등)는 <b>IO9 를 GND 에 연결한 채</b> 전원/리셋 → <b>Auto Reset 해제</b> 후 Flash.
+      IO8 은 리셋 시 HIGH 여야 하므로 IO8 에 연결된 신호(터치 INT 등)를 누른 상태로 리셋하지 마세요.
+    </div>
+  </div>
+
+  <div class="card">
+    <label for="binFile">1. F/W bin 파일 선택 (<b>.bin</b>)</label>
+    <input type="file" id="binFile" accept=".bin">
+    <div id="fileHint" style="font-size:12px; color:#666; margin-top:6px">
+      <code>FW_Total_V*.bin</code> (전체 → <code>0x0</code>) 또는 <code>FW_Update_*.bin</code> / 앱만 (→ <code>0x10000</code>) 업로드 가능.
+    </div>
+
+    <label style="margin-top:16px">2. 이미지 종류 (offset 자동)</label>
+    <div class="row" style="gap:8px; margin-top:4px">
+      <label style="font-weight:normal;margin:0;display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="radio" name="imgType" value="total" checked style="width:auto;flex:0 0 auto"> Total 전체 <code>0x0</code></label>
+      <label style="font-weight:normal;margin:0;display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="radio" name="imgType" value="app" style="width:auto;flex:0 0 auto"> App 만 <code>0x10000</code></label>
+      <label style="font-weight:normal;margin:0;display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="radio" name="imgType" value="custom" style="width:auto;flex:0 0 auto"> 사용자 지정</label>
+    </div>
+    <input type="text" id="offset" value="0x0" style="margin-top:8px" readonly>
+
+    <label style="margin-top:16px">Baudrate</label>
+    <select id="baud" style="width:100%; padding:10px; border:2px solid var(--border); border-radius:6px; font-size:14px; font-family:'Consolas',monospace">
+      <option value="115200" selected>115200</option>
+      <option value="230400">230400</option>
+      <option value="460800">460800</option>
+      <option value="921600">921600</option>
+    </select>
+
+    <label style="margin-top:12px; display:flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer">
+      <input type="checkbox" id="autoReset" checked style="width:auto; flex:0 0 auto">
+      Auto Reset
+    </label>
+
+    <label style="margin-top:16px">3. COM Port 선택</label>
+    <div class="row">
+      <button id="btnSelectPort" class="btn-secondary" style="flex:0 0 auto">Select COM Port</button>
+      <div id="portInfo" style="flex:1; padding:10px; background:#F3F4F6; border-radius:6px; font-family:'Consolas',monospace; font-size:13px; color:#666">
+        (포트 미선택)
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:20px">
+      <button id="btnConnect" class="btn-primary" disabled>Flash</button>
+      <button id="btnErase" class="btn-danger hidden">Erase Flash</button>
+      <button id="btnDisconnect" class="btn-secondary hidden">Disconnect</button>
+    </div>
+
+    <div class="row" style="margin-top:8px">
+      <button id="btnMonitor" class="btn-secondary" style="flex:0 0 auto">Serial 열기 (115200) — 부트모드 확인</button>
+      <button id="btnMonitorStop" class="btn-danger hidden" style="flex:0 0 auto">Serial 닫기</button>
+    </div>
+    <div style="font-size:12px;color:#666;margin-top:4px">
+      Serial 을 연 뒤 보드를 <b>리셋</b> → 아래 로그에서 <code>DOWNLOAD(USB/UART0)</code> 또는 <code>waiting for download</code> 가 보이면 다운로드 모드.
+      <code>SPI_FAST_FLASH_BOOT</code> 또는 앱 로그면 일반 부팅. <b>Flash 전에는 Serial 을 닫아야 합니다.</b>
+    </div>
+
+    <div id="status" class="status info hidden"></div>
+    <progress id="prog" class="hidden" value="0" max="100"></progress>
+    <div id="log"></div>
+  </div>
+
+  <div class="card" style="background:#FEF3C7">
+    <b>브라우저 요구 사항</b>
+    <ul>
+      <li>Chrome 89+, Edge 89+, Opera (WebSerial API)</li>
+      <li>Firefox / Safari <b>지원 안 함</b></li>
+      <li>HTTPS 또는 localhost 접속 필수</li>
+    </ul>
+  </div>
+
+  <p style="text-align:center; color:#999; margin-top:40px">
+    All copy right taekwangha
+  </p>
+
+  <script type="module">
+    // esptool-js from CDN (jsdelivr - GitHub friendly)
+    import { ESPLoader, Transport } from 'https://cdn.jsdelivr.net/npm/esptool-js@0.4.5/+esm';
+
+    const $ = (id) => document.getElementById(id);
+    const logEl = $('log');
+    const statusEl = $('status');
+    const progEl = $('prog');
+
+    function log(msg) {
+      const ts = new Date().toLocaleTimeString();
+      logEl.textContent += `[${ts}] ${msg}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(msg);
+    }
+    function setStatus(msg, kind = 'info') {
+      statusEl.className = `status ${kind}`;
+      statusEl.textContent = msg;
+      statusEl.classList.remove('hidden');
+    }
+
+    if (!('serial' in navigator)) {
+      setStatus('이 브라우저는 WebSerial API 를 지원하지 않습니다. Chrome / Edge 사용 필요.', 'error');
+      $('btnSelectPort').disabled = true;
+      $('btnConnect').disabled = true;
+      $('btnMonitor').disabled = true;
+    }
+
+    let device = null;
+    let transport = null;
+    let esploader = null;
+
+    /* 시리얼 모니터 (115200) — esptool 과 포트를 공유하므로 Flash 전에 반드시 닫는다. */
+    let monPort = null, monReader = null, monRunning = false;
+
+    async function startMonitor() {
+      if (monRunning) return;                 // 이미 열려 있으면 무시 (중복클릭 방지)
+      $('btnMonitor').disabled = true;
+      try {
+        monPort = device || await navigator.serial.requestPort({});
+        device = monPort;                                   // Flash 와 포트 공유
+        $('portInfo').textContent = `${describePort(device)}`;
+        $('portInfo').style.color = '#059669';
+        $('btnConnect').disabled = false;
+        try {
+          await monPort.open({ baudRate: 115200 });
+        } catch (openErr) {
+          setStatus('포트를 열 수 없습니다 — 다른 프로그램(시리얼 모니터 / IDE / 이 페이지의 다른 탭)이 '
+                    + '해당 포트를 사용 중입니다.\n→ 그 프로그램을 닫고, 페이지 새로고침(F5) 후 다시 시도하세요.', 'error');
+          log(`OPEN FAILED: ${openErr.message || openErr}`);
+          monPort = null;
+          $('btnMonitor').disabled = false;
+          return;
+        }
+        monRunning = true;
+        $('btnMonitor').classList.add('hidden');
+        $('btnMonitorStop').classList.remove('hidden');
+        setStatus('Serial 모니터 ON (115200). 보드를 리셋해 메시지를 확인하세요.', 'info');
+        log('--- Serial monitor 시작 (115200) ---');
+        const decoder = new TextDecoder();
+        let tail = '';
+        monReader = monPort.readable.getReader();
+        while (monRunning) {
+          const { value, done } = await monReader.read();
+          if (done) break;
+          if (value) {
+            const text = decoder.decode(value, { stream: true });
+            logEl.textContent += text;
+            logEl.scrollTop = logEl.scrollHeight;
+            tail = (tail + text).slice(-400);
+            /* ESP32-H2 ROM : boot:0xN (DOWNLOAD(USB/UART0)) / boot:0xN (SPI_FAST_FLASH_BOOT) — 숫자 대신 문자열로 판별 */
+            if (/DOWNLOAD\(USB\/UART0\)|waiting for download/i.test(tail)) {
+              setStatus('다운로드(download) 모드 감지됨 — Serial 닫고 Flash 하세요.', 'success');
+              tail = '';
+            } else if (/SPI_FAST_FLASH_BOOT/i.test(tail)) {
+              setStatus('일반 부팅 감지 (download 아님) — IO9 를 GND 에 연결한 채 리셋 필요.', 'warn');
+              tail = '';
+            }
+          }
+        }
+      } catch (e) {
+        setStatus(`모니터 오류: ${e.message || e}`, 'error');
+        log(`MONITOR ERROR: ${e.message || e}`);
+      } finally {
+        $('btnMonitor').disabled = false;
+      }
+    }
+
+    async function stopMonitor() {
+      monRunning = false;
+      try { if (monReader) { await monReader.cancel(); monReader.releaseLock(); } } catch (_) {}
+      try { if (monPort) await monPort.close(); } catch (_) {}
+      monReader = null; monPort = null;
+      $('btnMonitor').classList.remove('hidden');
+      $('btnMonitorStop').classList.add('hidden');
+      log('--- Serial monitor 종료 ---');
+    }
+
+    /* USB Vendor ID → 이름 매핑 (자주 쓰이는 USB-Serial 칩) */
+    const USB_VENDOR_NAMES = {
+      0x10c4: 'Silicon Labs CP210x',
+      0x1a86: 'QinHeng CH340/CH9102',
+      0x0403: 'FTDI FT232',
+      0x303a: 'Espressif (USB-Serial-JTAG)',
+      0x2341: 'Arduino',
+    };
+
+    function describePort(port) {
+      const info = port.getInfo ? port.getInfo() : {};
+      const vid = info.usbVendorId;
+      const pid = info.usbProductId;
+      if (vid !== undefined) {
+        const name = USB_VENDOR_NAMES[vid] || 'Unknown vendor';
+        return `${name}  (VID:0x${vid.toString(16).padStart(4,'0')}  PID:0x${(pid||0).toString(16).padStart(4,'0')})`;
+      }
+      return 'Serial Port (details unavailable)';
+    }
+
+    async function selectPort() {
+      try {
+        setStatus('COM 포트 선택 창을 확인하세요...', 'info');
+        device = await navigator.serial.requestPort({});
+        const desc = describePort(device);
+        $('portInfo').textContent = `${desc}`;
+        $('portInfo').style.color = '#059669';
+        $('btnConnect').disabled = false;
+        setStatus(`포트 선택됨 : ${desc}`, 'success');
+        log(`Port selected : ${desc}`);
+      } catch (e) {
+        if (e.name === 'NotFoundError') {
+          setStatus('포트가 선택되지 않았습니다. 다시 시도해주세요.', 'warn');
+        } else {
+          setStatus(`포트 선택 실패: ${e.message || e}`, 'error');
+        }
+      }
+    }
+
+    async function connectAndFlash() {
+      if (monRunning) { await stopMonitor(); }   // 포트 배타적 → Flash 전 모니터 닫기
+      if (!device) {
+        setStatus('먼저 COM Port 를 선택하세요.', 'warn');
+        return;
+      }
+      const fileInput = $('binFile');
+      if (!fileInput.files || fileInput.files.length === 0) {
+        setStatus('bin 파일을 먼저 선택하세요.', 'warn');
+        return;
+      }
+      const file = fileInput.files[0];
+
+      const offsetStr = $('offset').value.trim();
+      const offset = parseInt(offsetStr, 16);
+      if (isNaN(offset)) {
+        setStatus('Offset 이 잘못됨. 예: 0x0 또는 0x10000', 'warn');
+        return;
+      }
+
+      /* Total(0x0) / App(0x10000) 둘 다 허용. offset 과 파일 종류가 어긋나면
+         (0x0 에 앱만, 0x10000 에 전체) 부팅 불능이라 확인창으로 가드한다. */
+      const kind = classifyBin(file.name);
+      if (offset === 0x0 && kind === 'app') {
+        if (!confirm(`App 전용 파일 "${file.name}" 을 offset 0x0 에 굽습니다.\n` +
+                     `부트로더가 없어 부팅이 안 됩니다. App 은 보통 0x10000 입니다.\n그래도 진행할까요?`)) return;
+      }
+      if (offset === 0x10000 && kind === 'total') {
+        if (!confirm(`Total 전체 이미지 "${file.name}" 을 offset 0x10000 에 굽습니다.\n` +
+                     `부트로더가 엉뚱한 위치에 써져 부팅이 안 됩니다.\n그래도 진행할까요?`)) return;
+      }
+
+      log(`bin file : ${file.name} (${file.size} bytes)`);
+      log(`offset   : 0x${offset.toString(16)}`);
+
+      // Read file as binary string
+      const fileArrayBuffer = await file.arrayBuffer();
+      const binaryString = new Uint8Array(fileArrayBuffer).reduce((acc, byte) => acc + String.fromCharCode(byte), '');
+
+      try {
+        transport = new Transport(device, true);
+
+        const baud = parseInt($('baud').value, 10) || 115200;
+        log(`flash baud : ${baud}`);
+        const flashOptions = {
+          transport: transport,
+          baudrate: baud,
+          romBaudrate: 115200,
+          debugLogging: false,
+        };
+        esploader = new ESPLoader(flashOptions);
+        setStatus('ESP 연결 중...', 'info');
+        const resetMode = $('autoReset').checked ? 'default_reset' : 'no_reset';
+        log(`connect mode : ${resetMode}`);
+        const chip = await esploader.main(resetMode);
+        log(`Chip detected : ${chip}`);
+        if (!/H2/i.test(chip)) {
+          if (!confirm(`감지된 칩이 "${chip}" 입니다 (ESP32-H2 아님).\n그래도 진행할까요?`)) {
+            throw new Error(`대상 칩 불일치: ${chip}`);
+          }
+        }
+        setStatus(`${chip} 연결됨. Flash 시작...`, 'success');
+
+        // Flash
+        progEl.classList.remove('hidden');
+        progEl.value = 0;
+
+        await esploader.writeFlash({
+          fileArray: [{ data: binaryString, address: offset }],
+          flashSize: 'keep',
+          flashMode: 'keep',
+          flashFreq: 'keep',
+          eraseAll: false,
+          compress: true,
+          reportProgress: (idx, written, total) => {
+            const pct = Math.round((written / total) * 100);
+            progEl.value = pct;
+            if (pct % 5 === 0) log(`Flashing... ${pct}%`);
+          },
+        });
+
+        setStatus('Flash 완료! 보드 리셋 중...', 'success');
+        log('Resetting device...');
+        await esploader.hardReset();
+        if ($('autoReset').checked) {
+          setStatus('업데이트 완료. 보드가 재부팅되었습니다.', 'success');
+        } else {
+          setStatus('업데이트 완료. IO9 를 GND 에서 떼고 보드를 수동 리셋하세요.', 'success');
+        }
+        $('btnErase').classList.remove('hidden');
+        $('btnDisconnect').classList.remove('hidden');
+      } catch (e) {
+        setStatus(`오류: ${e.message || e}`, 'error');
+        log(`ERROR: ${e.stack || e}`);
+      } finally {
+        try { if (transport) await transport.disconnect(); } catch (_) {}
+        device = null;
+        transport = null;
+        esploader = null;
+      }
+    }
+
+    async function eraseFlash() {
+      if (!confirm('전체 flash 를 지웁니다. 정말 진행하시겠습니까?')) return;
+      try {
+        device = await navigator.serial.requestPort({});
+        transport = new Transport(device, true);
+        esploader = new ESPLoader({ transport, baudrate: parseInt($('baud').value, 10) || 115200, romBaudrate: 115200 });
+        await esploader.main($('autoReset').checked ? 'default_reset' : 'no_reset');
+        setStatus('전체 erase 중...', 'warn');
+        await esploader.eraseFlash();
+        setStatus('Erase 완료', 'success');
+      } catch (e) {
+        setStatus(`${e.message || e}`, 'error');
+      } finally {
+        try { if (transport) await transport.disconnect(); } catch (_) {}
+      }
+    }
+
+    /* 파일명으로 이미지 종류 추정 : fw_total_* → total(0x0),
+       fw_update_* 또는 이름에 "app" 포함 → app(0x10000), 그 외 → unknown. */
+    function classifyBin(filename) {
+      const n = filename.toLowerCase();
+      if (!n.endsWith('.bin')) return 'unknown';
+      if (n.startsWith('fw_total_')) return 'total';
+      if (n.startsWith('fw_update_') || n.includes('app')) return 'app';
+      return 'unknown';
+    }
+
+    const OFFSET_BY_TYPE = { total: '0x0', app: '0x10000' };
+
+    /* 라디오 선택 → offset 자동 설정 (custom 만 직접 입력 허용) */
+    function applyImgType(type) {
+      const off = $('offset');
+      if (type === 'custom') { off.readOnly = false; off.focus(); }
+      else { off.value = OFFSET_BY_TYPE[type]; off.readOnly = true; }
+    }
+    document.querySelectorAll('input[name="imgType"]').forEach((r) =>
+      r.addEventListener('change', () => applyImgType(r.value)));
+
+    function setImgType(type) {
+      const r = document.querySelector(`input[name="imgType"][value="${type}"]`);
+      if (r) { r.checked = true; applyImgType(type); }
+    }
+
+    /* 파일 선택 시 종류 자동 판별 → 라디오/offset 자동 설정 + 안내 */
+    $('binFile').addEventListener('change', (e) => {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      const name = files[0].name;
+      const hint = $('fileHint');
+      const kind = classifyBin(name);
+      hint.style.padding = '8px';
+      hint.style.borderRadius = '6px';
+      if (kind === 'total') {
+        setImgType('total');
+        hint.innerHTML = `Total 전체 이미지 : <code>${name}</code> → offset <code>0x0</code>`;
+        hint.style.color = '#065F46'; hint.style.background = '#D1FAE5';
+      } else if (kind === 'app') {
+        setImgType('app');
+        hint.innerHTML = `App 이미지 : <code>${name}</code> → offset <code>0x10000</code>`;
+        hint.style.color = '#065F46'; hint.style.background = '#D1FAE5';
+      } else {
+        hint.innerHTML = `종류 자동판별 실패 : <code>${name}</code><br>` +
+                         `→ 아래 <b>이미지 종류</b>를 직접 선택하세요 (Total <code>0x0</code> / App <code>0x10000</code>).`;
+        hint.style.color = '#92400E'; hint.style.background = '#FEF3C7';
+      }
+    });
+
+    $('btnSelectPort').addEventListener('click', selectPort);
+    $('btnConnect').addEventListener('click', connectAndFlash);
+    $('btnMonitor').addEventListener('click', startMonitor);
+    $('btnMonitorStop').addEventListener('click', stopMonitor);
+    $('btnErase').addEventListener('click', eraseFlash);
+    $('btnDisconnect').addEventListener('click', async () => {
+      if (transport) await transport.disconnect();
+      device = null;
+      $('portInfo').textContent = '(포트 미선택)';
+      $('portInfo').style.color = '#666';
+      $('btnConnect').disabled = true;
+      setStatus('연결 해제됨', 'info');
+    });
+
+    log('페이지 로드 완료. 1) bin 선택 → 2) 종류(Total 0x0 / App 0x10000) 확인 → 3) COM Port → 4) Flash');
+  </script>
+</body>
+</html>
