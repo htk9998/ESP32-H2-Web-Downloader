@@ -51,7 +51,7 @@
 </head>
 <body>
   <h1>ESP32-H2-MINI-1 Downloader</h1>
-  <h2 style="color:#666;font-size:15px;margin:2px 0 14px;font-weight:normal">ESP32-H2-MINI-1 · RISC-V · BLE 5 / 802.15.4 · esptool-js Web Flasher</h2>
+  <h2 style="color:#666;font-size:15px;margin:2px 0 14px;font-weight:normal">ESP32-H2-MINI-1 · RISC-V · BLE 5 / 802.15.4 · esptool-js 0.7.1 Web Flasher</h2>
 
   <div class="card">
     <h3 style="margin-top:0">사용 절차</h3>
@@ -139,7 +139,8 @@
 
   <script type="module">
     // esptool-js from CDN (jsdelivr - GitHub friendly)
-    import { ESPLoader, Transport } from 'https://cdn.jsdelivr.net/npm/esptool-js@0.4.5/+esm';
+    // 0.7.1: ESP32-H2 는 GET_SECURITY_INFO chip_id 로 감지 (0.4.5 는 magic 0xD7B73E80 하나만 알아 신규 리비전 H2 에서 chip=null 오류)
+    import { ESPLoader, Transport } from 'https://cdn.jsdelivr.net/npm/esptool-js@0.7.1/+esm';
 
     const $ = (id) => document.getElementById(id);
     const logEl = $('log');
@@ -309,9 +310,8 @@
       log(`bin file : ${file.name} (${file.size} bytes)`);
       log(`offset   : 0x${offset.toString(16)}`);
 
-      // Read file as binary string
-      const fileArrayBuffer = await file.arrayBuffer();
-      const binaryString = new Uint8Array(fileArrayBuffer).reduce((acc, byte) => acc + String.fromCharCode(byte), '');
+      // 0.7.1: fileArray.data 는 Uint8Array
+      const fileData = new Uint8Array(await file.arrayBuffer());
 
       try {
         transport = new Transport(device, true);
@@ -342,7 +342,7 @@
         progEl.value = 0;
 
         await esploader.writeFlash({
-          fileArray: [{ data: binaryString, address: offset }],
+          fileArray: [{ data: fileData, address: offset }],
           flashSize: 'keep',
           flashMode: 'keep',
           flashFreq: 'keep',
@@ -357,7 +357,7 @@
 
         setStatus('Flash 완료! 보드 리셋 중...', 'success');
         log('Resetting device...');
-        await esploader.hardReset();
+        await esploader.after('hard_reset');
         if ($('autoReset').checked) {
           setStatus('업데이트 완료. 보드가 재부팅되었습니다.', 'success');
         } else {

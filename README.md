@@ -65,5 +65,5 @@ Serial 열기 버튼으로 부트 로그를 보면 `DOWNLOAD(USB/UART0)` 또는 
 ## 기술 스택
 
 - HTML5 + Vanilla JS (프레임워크 없음)
-- esptool-js v0.4.5 (CDN : jsdelivr, ESP32-H2 지원)
+- esptool-js v0.7.1 (CDN : jsdelivr). ESP32-H2 는 GET_SECURITY_INFO chip_id 로 감지 — 0.4.x 는 magic 값 하나만 알아 신규 리비전 H2 에서 `Cannot read properties of null (reading 'getChipDescription')` 발생
 - WebSerial API (chip 통신, 칩 자동 감지)
